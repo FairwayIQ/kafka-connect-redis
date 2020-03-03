@@ -1,12 +1,12 @@
 /**
  * Copyright © 2017 Jeremy Custenborder (jcustenborder@gmail.com)
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,14 +25,17 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 abstract class SinkOperation {
   private static final Logger log = LoggerFactory.getLogger(SinkOperation.class);
   public static final SinkOperation NONE = new NoneOperation(null);
 
   public final Type type;
-  private final RedisSinkConnectorConfig config;
+  protected final RedisSinkConnectorConfig config;
 
   SinkOperation(Type type, RedisSinkConnectorConfig config) {
     this.type = type;
@@ -42,6 +45,7 @@ abstract class SinkOperation {
   public enum Type {
     SET,
     DELETE,
+    PUBLISH,
     NONE
   }
 
@@ -70,6 +74,9 @@ abstract class SinkOperation {
         break;
       case DELETE:
         result = new DeleteOperation(config, size);
+        break;
+      case PUBLISH:
+        result = new PublishOperation(config, size);
         break;
       default:
         throw new IllegalStateException(
@@ -153,6 +160,48 @@ abstract class SinkOperation {
     @Override
     public int size() {
       return this.deletes.size();
+    }
+  }
+
+  static class PublishOperation extends SinkOperation {
+    final List<byte[]> channels;
+    final List<byte[]> messages;
+
+    PublishOperation(RedisSinkConnectorConfig config, int size) {
+      super(Type.PUBLISH, config);
+      this.channels = new ArrayList<>(size);
+      this.messages = new ArrayList<>(size);
+    }
+
+    @Override
+    public void add(byte[] key, byte[] value) {
+      this.channels.add(key);
+      this.messages.add(value);
+    }
+
+    @Override
+    public void execute(RedisClusterAsyncCommands<byte[], byte[]> asyncCommands) throws InterruptedException {
+      log.debug("execute() - Calling publish with {} value(s)", this.messages.size());
+
+      List<CompletableFuture> puplishings = IntStream
+          .range(0, this.messages.size())
+          .mapToObj(
+              i -> asyncCommands.publish(this.channels.get(i), this.messages.get(i)).toCompletableFuture()
+          ).collect(Collectors.toList());
+
+      CompletableFuture<Void> batchPublish = CompletableFuture.allOf(puplishings.toArray(new CompletableFuture[puplishings.size()]));
+      try {
+        batchPublish.get(this.config.operationTimeoutMs, TimeUnit.MILLISECONDS);
+      } catch (Exception e) {
+        throw new RetriableException(
+            String.format("Timeout after %s ms while waiting for operation to complete.", this.config.operationTimeoutMs)
+        );
+      }
+    }
+
+    @Override
+    public int size() {
+      return this.messages.size();
     }
   }
 }

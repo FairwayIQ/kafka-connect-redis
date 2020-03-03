@@ -25,6 +25,19 @@ public class RedisSinkConnectorConfigTest {
     }
 
     @Test
+    public void testDefaultInsertOperation() {
+        RedisSinkConnectorConfig config = new RedisSinkConnectorConfig(props);
+        assertEquals(config.insertOperation, SinkOperation.Type.SET);
+    }
+
+    @Test
+    public void testSetInsertOperationConfig() {
+        props.put(RedisSinkConnectorConfig.INSERT_OPERATION_CONF, "PUBLISH");
+        RedisSinkConnectorConfig config = new RedisSinkConnectorConfig(props);
+        assertEquals(config.insertOperation, SinkOperation.Type.PUBLISH);
+    }
+
+    @Test
     public void testDefaultOperationTimeoutsConfig() {
         RedisSinkConnectorConfig config = new RedisSinkConnectorConfig(props);
         assertEquals(config.operationTimeoutMs, 10000L);

@@ -1,12 +1,12 @@
 /**
  * Copyright © 2017 Jeremy Custenborder (jcustenborder@gmail.com)
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,14 +32,20 @@ class RedisSinkConnectorConfig extends RedisConnectorConfig {
   public final static String CHARSET_CONF = "redis.charset";
   public final static String CHARSET_DOC = "The character set to use for String key and values.";
 
+  public final static String INSERT_OPERATION_CONF = "redis.insert.operation";
+  public final static String INSERT_OPERATION_DOC = "The operation to use for key and values.";
+
   public final long operationTimeoutMs;
   public final Charset charset;
+  public final SinkOperation.Type insertOperation;
 
   public RedisSinkConnectorConfig(Map<?, ?> originals) {
     super(config(), originals);
     this.operationTimeoutMs = getLong(OPERATION_TIMEOUT_MS_CONF);
     String charset = getString(CHARSET_CONF);
     this.charset = Charset.forName(charset);
+
+    this.insertOperation = SinkOperation.Type.valueOf(getString(INSERT_OPERATION_CONF));
   }
 
   public static ConfigDef config() {
@@ -58,6 +64,13 @@ class RedisSinkConnectorConfig extends RedisConnectorConfig {
                 .validator(Validators.validCharset())
                 .recommender(Recommenders.charset())
                 .importance(ConfigDef.Importance.LOW)
+                .build()
+        ).define(
+            ConfigKeyBuilder.of(INSERT_OPERATION_CONF, ConfigDef.Type.STRING)
+                .documentation(INSERT_OPERATION_DOC)
+                .defaultValue(SinkOperation.Type.SET.name())
+                .validator(ConfigDef.ValidString.in(SinkOperation.Type.SET.name(), SinkOperation.Type.PUBLISH.name()))
+                .importance(ConfigDef.Importance.MEDIUM)
                 .build()
         );
   }
